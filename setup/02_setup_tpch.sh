@@ -23,5 +23,4 @@ for i in `ls *.tbl`; do sed 's/.$//' $i > $(echo $i | sed 's/.tbl/.csv/g'); done
 rm -r *.tbl
 
 cd ..
-
-mysql --host=localhost --user=root --password="" --port=3306 < setup/import_data.sql
+mysql --host=127.0.0.1 --user=root --password="password" --port=3307 < setup/import_data.sql

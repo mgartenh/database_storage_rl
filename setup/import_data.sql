@@ -2,24 +2,14 @@ USE TPCH;
 
 SET GLOBAL local_infile=1;
 
--- SELECT * FROM customer;
-DELETE FROM customer;
+DELETE FROM region;
 
-LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/customer.csv'
-INTO TABLE customer
+LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/region.csv'
+INTO TABLE region
 FIELDS TERMINATED BY '|'
 LINES TERMINATED BY '\n';
 
-OPTIMIZE TABLE customer;
-
-DELETE FROM lineitem;
-
-LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/lineitem.csv'
-INTO TABLE lineitem
-FIELDS TERMINATED BY '|'
-LINES TERMINATED BY '\n';
-
-OPTIMIZE TABLE lineitem;
+OPTIMIZE TABLE region;
 
 DELETE FROM nation;
 
@@ -30,15 +20,6 @@ LINES TERMINATED BY '\n';
 
 OPTIMIZE TABLE nation;
 
-DELETE FROM orders;
-
-LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/orders.csv'
-INTO TABLE orders
-FIELDS TERMINATED BY '|'
-LINES TERMINATED BY '\n';
-
-OPTIMIZE TABLE orders;
-
 DELETE FROM part;
 LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/part.csv'
 INTO TABLE part
@@ -46,6 +27,15 @@ FIELDS TERMINATED BY '|'
 LINES TERMINATED BY '\n';
 
 OPTIMIZE TABLE part;
+
+DELETE FROM supplier;
+
+LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/supplier.csv'
+INTO TABLE supplier
+FIELDS TERMINATED BY '|'
+LINES TERMINATED BY '\n';
+
+OPTIMIZE TABLE supplier;
 
 DELETE FROM partsupp;
 
@@ -56,23 +46,35 @@ LINES TERMINATED BY '\n';
 
 OPTIMIZE TABLE partsupp;
 
-DELETE FROM region;
+-- SELECT * FROM customer;
+DELETE FROM customer;
 
-LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/region.csv'
-INTO TABLE region
+LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/customer.csv'
+INTO TABLE customer
 FIELDS TERMINATED BY '|'
 LINES TERMINATED BY '\n';
 
-OPTIMIZE TABLE region;
+OPTIMIZE TABLE customer;
 
-DELETE FROM supplier;
+DELETE FROM orders;
 
-LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/supplier.csv'
-INTO TABLE supplier
+LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/orders.csv'
+INTO TABLE orders
 FIELDS TERMINATED BY '|'
 LINES TERMINATED BY '\n';
 
-OPTIMIZE TABLE supplier;
+OPTIMIZE TABLE orders;
+
+DELETE FROM lineitem;
+
+LOAD DATA LOCAL INFILE '/Users/mgartenhaus/CS598/data/lineitem.csv'
+INTO TABLE lineitem
+FIELDS TERMINATED BY '|'
+LINES TERMINATED BY '\n';
+
+OPTIMIZE TABLE lineitem;
+
+
 
 -- select
 -- 	l_returnflag,
