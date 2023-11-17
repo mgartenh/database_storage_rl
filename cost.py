@@ -47,5 +47,7 @@ def get_index_cost(cursor, table_index_info) -> float:
 
     index_name_list_string = "('"+ "','".join(index_name_list) + "')"
         
+    #print(index_name_list_string)
+
     cursor.execute(f"SELECT ROUND(SUM(stat_value * @@innodb_page_size / 1024 / 1024), 2) size_in_mb FROM mysql.innodb_index_stats WHERE stat_name = 'size' AND index_name != 'PRIMARY' AND database_name = 'TPCH' AND index_name IN {index_name_list_string}")
     return float(cursor.fetchone()[0])

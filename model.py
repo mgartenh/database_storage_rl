@@ -34,11 +34,11 @@ class CostNetwork(nn.Module):
         layers = OrderedDict()
     
         layers['fc1'] = nn.Linear(in_features=num_indexes, out_features=hidden_dim)
-        layers['relu1'] = nn.ReLU()
+        layers['relu1'] = nn.LeakyReLU()
 
         for i in range(2, num_hidden):
             layers['fc' + str(i)] = nn.Linear(hidden_dim, hidden_dim)
-            layers['relu' + str(i)] = nn.ReLU()
+            layers['relu' + str(i)] = nn.LeakyReLU()
 
         layers['out'] = nn.Linear(hidden_dim, 1)
 
