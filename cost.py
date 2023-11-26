@@ -13,8 +13,9 @@ def partial_transformer(node, table_index_info):
     if isinstance(node, sqlglot.exp.Table):
         table_name = node.this.output_name
         if table_name in table_index_info:
-            use_index_flag = table_index_info[table_name]["use_index_flag"]
             indexes = [ f"index_{table_name}_{column}" for column in table_index_info[table_name]["indexes"]]
+
+            use_index_flag = table_index_info[table_name]["use_index_flag"] if len(indexes) > 0 else True
         else:
             use_index_flag = True
             indexes = list()
@@ -33,6 +34,9 @@ def get_query_cost(cursor, query, table_index_info) -> float:
     transformer = partial(partial_transformer, table_index_info=table_index_info)
     transformed_tree = expression_tree.transform(transformer)
     index_specified_query = transformed_tree.sql()
+
+    #print(index_specified_query)
+
     cursor.execute(f"EXPLAIN FORMAT='JSON' {index_specified_query}")
 
     query_cost = json.loads(cursor.fetchall()[0][0])["query_block"]["cost_info"]["query_cost"]
