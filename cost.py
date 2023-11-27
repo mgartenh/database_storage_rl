@@ -4,10 +4,14 @@ Determine query and storage cost of queries
 Code was written by Matthew Gartenhaus
 
 """
+from index import get_table_index_info, get_table_index_info_inverse
+
 import sqlglot
 import mysql.connector
 from functools import partial
 import json
+
+import random
 
 def partial_transformer(node, table_index_info):
     if isinstance(node, sqlglot.exp.Table):
@@ -35,8 +39,6 @@ def get_query_cost(cursor, query, table_index_info) -> float:
     transformed_tree = expression_tree.transform(transformer)
     index_specified_query = transformed_tree.sql()
 
-    #print(index_specified_query)
-
     cursor.execute(f"EXPLAIN FORMAT='JSON' {index_specified_query}")
 
     query_cost = json.loads(cursor.fetchall()[0][0])["query_block"]["cost_info"]["query_cost"]
@@ -51,7 +53,6 @@ def get_index_cost(cursor, table_index_info) -> float:
 
     index_name_list_string = "('"+ "','".join(index_name_list) + "')"
         
-    #print(index_name_list_string)
-
     cursor.execute(f"SELECT ROUND(SUM(stat_value * @@innodb_page_size / 1024 / 1024), 2) size_in_mb FROM mysql.innodb_index_stats WHERE stat_name = 'size' AND index_name != 'PRIMARY' AND database_name = 'TPCH' AND index_name IN {index_name_list_string}")
     return float(cursor.fetchone()[0])
+

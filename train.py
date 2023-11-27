@@ -1,12 +1,12 @@
 """
 Load data and train model
 """
-from model import CostNetwork
-from cost import get_index_cost, get_query_cost
+from model import CostNetwork, choose_action
+from cost import get_query_cost, get_index_cost
+from index import get_table_index_info, get_table_index_info_extremes, get_table_index_info_inverse, get_indexes
 
 import random
 from tqdm import tqdm
-from time import sleep
 
 import torch
 
@@ -15,102 +15,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import mysql.connector
-import pandas as pd
-#import sqlparse
-#import sqlglot
-from functools import partial
-#import json
-
-import copy
 
 import matplotlib.pyplot as plt
 
-"""
- - set up get_best_index to differentiate between tables
- - use get_best_indexes to create baseline
- - generate different query loads 
-    - 3 different variations-- each will prioritize a different query type
-"""
-
-dec_to_bin_dict = {}
 table_noopt = table_allopt = None
 
-def get_table_index_info_extremes(database):
-    tables_list = pd.read_sql("SHOW TABLES", database)["Tables_in_TPCH"].tolist()
-    index_table_mapping = dict()
-    index_list = list()
-    for table in tables_list:
-        query_result = pd.read_sql(f"SHOW indexes FROM {table} WHERE key_name LIKE 'index_%'", database)
-        index_table_mapping[table] = query_result["Column_name"].tolist()
-        index_list += query_result["Key_name"].tolist()
-
-    table_names = [x.split("_")[1] for x in index_list]
-
-    table_index_info_noopt = dict()
-    for i in range(len(index_list)):
-        index = index_list[i]
-        table = table_names[i]
-        index_col = index.replace(f"index_{table}_", "")
-        if table in table_index_info_noopt:
-            table_index_info_noopt[table]["indexes"].append(index_col)
-        else:
-            table_index_info_noopt[table] = {
-                "use_index_flag": False,
-                "indexes": [index_col],
-            }
-    
-    table_index_info_allopt = copy.deepcopy(table_index_info_noopt)
-
-    for table in table_index_info_allopt:
-        table_index_info_allopt[table]["use_index_flag"] = True
-
-    return table_index_info_noopt, table_index_info_allopt
-
-def get_table_index_info_inverse(table_index_info, table_index_info_noopt):
-    table_index_info_inverse = dict()
-
-    for table in table_index_info_noopt:
-        table_index_info_inverse[table] = copy.deepcopy(table_index_info_noopt[table])
-        if table in table_index_info:
-            indexes = table_index_info[table]["indexes"]
-            table_index_info_inverse[table]["indexes"] = list(set(table_index_info_inverse[table]["indexes"]) - set(indexes))
-    
-    return table_index_info_inverse
-
-def get_indexes(database):
-    tables_list = pd.read_sql("SHOW TABLES", database)["Tables_in_TPCH"].tolist()
-    index_table_mapping = dict()
-    index_list = list()
-    for table in tables_list:
-        query_result = pd.read_sql(f"SHOW indexes FROM {table} WHERE key_name LIKE 'index_%'", database)
-        index_table_mapping[table] = query_result["Column_name"].tolist()
-        index_list += query_result["Key_name"].tolist()
-    
-    return len(index_list), index_list
-
-def get_cost(cursor, state, indexes, queries, num_queries, alpha=0.5):
-    def get_table_index_info(state, indexes):
-        table_index_info = dict()
-
-        table_names = [x.split("_")[1] for x in indexes]
-        #print(table_names)
-
-        for i in range(len(indexes)):
-            if state[i] == 1:
-                index = indexes[i]
-                table = table_names[i]
-                index_col = index.replace(f"index_{table}_", "")
-                #print(table)
-                #print(index_col)
-                if table in table_index_info:
-                    table_index_info[table]["indexes"].append(index_col)
-                else:
-                    table_index_info[table] = {
-                        "use_index_flag": True,
-                        "indexes": [index_col],
-                    }
-        #print(table_index_info)
-        return table_index_info
+def get_cost(cursor, state, indexes, queries, num_queries, alpha=0.5, mode="train"):
     def sample_query(queries):
         return random.choice(queries)
     
@@ -122,75 +32,24 @@ def get_cost(cursor, state, indexes, queries, num_queries, alpha=0.5):
     for i in range(num_queries):
         query = sample_query(queries)
 
-        query_cost += get_query_cost(cursor, query, table_inverse) / get_query_cost(cursor, query, table_noopt) # TODO: normalize against no_opt 
-
+        if mode == "eval":
+            query_cost += get_query_cost_actual(cursor, query, table_inverse) / get_query_cost_actual(cursor, query, table_noopt) 
+        else:
+            query_cost += get_query_cost(cursor, query, table_inverse) / get_query_cost(cursor, query, table_noopt) 
+        
     query_cost /= num_queries
     
     index_cost = 0
     
     if max(state) > 0:
-        index_cost = get_index_cost(cursor, table) / get_index_cost(cursor, table_allopt) #TODO: normalize against all_opt
-    
+        index_cost = get_index_cost(cursor, table) / get_index_cost(cursor, table_allopt) 
+        
     total_cost = alpha * query_cost + (1 - alpha) * index_cost
 
     return total_cost
 
-
-
-#this is based off of the initial RL algorithm
-#function will use model inference 
-#with epsilon greedy method to determine next index state
-def choose_action(model, num_indexes, eps=0.1):
-    def dec_to_bin(num):
-        assert num >= 0
-
-        if num in dec_to_bin_dict:
-            return dec_to_bin_dict[num]
-
-        #return list of 1s and 0s based on integer num
-        dec_num = num
-        bin_num = []
-
-        while dec_num >= 1:
-            bin_num.append(dec_num % 2)
-            dec_num = dec_num // 2
-        
-        while len(bin_num) < num_indexes:
-            bin_num.insert(0, 0)
-
-        dec_to_bin_dict[num] = bin_num
-
-        return bin_num
-    
-    num_states = 2 ** num_indexes #each index has two states
-    action = None
-    
-    p = random.random()
-
-    if p < eps:
-        #select random state
-        action = random.randint(0, num_states - 1)
-    else:
-        #select best state based on model
-        #this would be the action with the minimum estimated cost
-        min_output = None
-
-        for i in range(num_states):
-            #print(dec_to_bin(i))
-            input = torch.Tensor(dec_to_bin(i))
-            #print(input)
-            with torch.no_grad():
-                output = model(input)
-
-            if min_output == None or output < min_output:
-                #print(output, min_output)
-                min_output = output
-                action = i
-
-    return dec_to_bin(action)
-
 def get_best_indexes(k, database, cursor, queries, num_queries):
-    num_indexes, indexes = get_indexes(database)
+    num_indexes, indexes, _ = get_indexes(database)
 
     index_costs = {}
 
@@ -205,7 +64,6 @@ def get_best_indexes(k, database, cursor, queries, num_queries):
     index_costs = [index_costs[i][0] for i in range(k)]
 
     return index_costs
-
 
 if __name__ == "__main__": 
     device = "cpu"
@@ -230,19 +88,21 @@ if __name__ == "__main__":
     queries = sql_reader.read().split(";")
     sql_reader.close()
 
-    print(len(queries))
-
-    #set hyperparameters for creating model
-    #num_indexes, indexes = get_indexes(database) #TODO: get actual number of indexes
-
-    #TODO: change this
-    #num_indexes = 5
-    #indexes = random.choices(indexes, k=num_indexes)
     #indexes = ["index_lineitem_l_returnflag", "index_customer_c_nationkey", "index_lineitem_l_partkey", "index_lineitem_l_suppkey", "index_orders_o_orderstatus"]
     #num_indexes = len(indexes)
+    num_queries = 100
 
-    num_indexes = 10
-    indexes = get_best_indexes(num_indexes, database, cursor, queries, 10)
+    num_greedy_indexes = 5
+    greedy_indexes = get_best_indexes(num_greedy_indexes, database, cursor, queries, 100)
+
+    greedy_state = [1 for _ in range(len(greedy_indexes))]
+
+    table_greedy_opt = get_table_index_info(greedy_state, greedy_indexes)
+
+    print(f"Table Greedy Opt:\n {table_greedy_opt}\n")
+
+    #determine actual num_indexes, indexes for each table
+    #TODO: change this so it runs the neural network on every table before a final pass on combined resulting config
 
     num_hidden = 3
     hidden_dim = 10
@@ -253,13 +113,11 @@ if __name__ == "__main__":
     output = None
 
     num_epochs = 500
-    num_steps = 1
-    num_queries = 21
 
     learning_rate = 1e-3
 
     criterion = nn.MSELoss()
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate) #TODO: check this and make sure it works
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
 
     print("Initial Output:")
 
@@ -280,34 +138,28 @@ if __name__ == "__main__":
     epochs_progress = tqdm(range(num_epochs), leave=True)
 
     for epoch in epochs_progress:
-        steps_progress = tqdm(range(num_steps), leave=False)
-    
-        for step in steps_progress:
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
-            #print("Choosing Action...")
-            state = choose_action(model, num_indexes, eps=0.5)
-            input = torch.Tensor(state)
+        #print("Choosing Action...")
+        state = choose_action(model, num_indexes, eps=0.5)
+        input = torch.Tensor(state)
 
-            #print("Running Model...")
-            output = model(input)
+        #print("Running Model...")
+        output = model(input)
 
-            #TODO:get target for labels using get_cost()
-            target = torch.Tensor([get_cost(cursor, state, indexes, queries, num_queries)])
-            #target = torch.Tensor([1])
+        target = torch.Tensor([get_cost(cursor, state, indexes, queries, num_queries)])
 
-            #print("Determining Loss")
-            loss = criterion(output, target)
+        #print("Determining Loss")
+        loss = criterion(output, target)
 
-            loss_values.append(loss.item())
+        loss_values.append(loss.item())
 
-            #print("Backpropagation")
-            loss.backward()
-            optimizer.step()
+        #print("Backpropagation")
+        loss.backward()
+        optimizer.step()
 
-            curr_eps = max(end_eps, curr_eps * step_eps)
+        curr_eps = max(end_eps, curr_eps * step_eps)
 
-        steps_progress.close()
     epochs_progress.close()
 
 
