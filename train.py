@@ -90,10 +90,10 @@ if __name__ == "__main__":
 
     #indexes = ["index_lineitem_l_returnflag", "index_customer_c_nationkey", "index_lineitem_l_partkey", "index_lineitem_l_suppkey", "index_orders_o_orderstatus"]
     #num_indexes = len(indexes)
-    num_queries = 100
+    num_queries = 10
 
     num_greedy_indexes = 5
-    greedy_indexes = get_best_indexes(num_greedy_indexes, database, cursor, queries, 100)
+    greedy_indexes = get_best_indexes(num_greedy_indexes, database, cursor, queries, num_queries)
 
     greedy_state = [1 for _ in range(len(greedy_indexes))]
 
@@ -104,6 +104,9 @@ if __name__ == "__main__":
     #determine actual num_indexes, indexes for each table
     #TODO: change this so it runs the neural network on every table before a final pass on combined resulting config
 
+    num_indexes = 10
+    indexes = get_best_indexes(num_indexes, database, cursor, queries, num_queries)
+
     num_hidden = 3
     hidden_dim = 10
 
@@ -113,6 +116,7 @@ if __name__ == "__main__":
     output = None
 
     num_epochs = 500
+    num_queries = 25
 
     learning_rate = 1e-3
 
@@ -170,6 +174,10 @@ if __name__ == "__main__":
         print(state)
         print([indexes[i] for i in range(num_indexes) if state[i] == 1])
         print(get_cost(cursor, state, indexes, queries, num_queries))
+
+        table_ml_opt = get_table_index_info(state, indexes)
+
+        print(f"Table ML Opt:\n {table_ml_opt}\n")
 
     plt.plot(range(num_epochs), loss_values)
     plt.show()
