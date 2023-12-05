@@ -1,4 +1,4 @@
-total_gbs=.01
+total_gbs=1
 system=MAC
 
 sh setup/01_docker_startup.sh

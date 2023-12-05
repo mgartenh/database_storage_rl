@@ -35,21 +35,23 @@ def get_cost(cursor, state, indexes, queries, num_queries, alpha=0.5, mode="trai
         if mode == "eval":
             query_cost += get_query_cost_actual(cursor, query, table_inverse) / get_query_cost_actual(cursor, query, table_noopt) 
         else:
-            query_cost += get_query_cost(cursor, query, table_inverse) / get_query_cost(cursor, query, table_noopt) 
+            query_cost += min(1, get_query_cost(cursor, query, table_inverse) / get_query_cost(cursor, query, table_noopt))
         
     query_cost /= num_queries
     
     index_cost = 0
     
     if max(state) > 0:
-        index_cost = get_index_cost(cursor, table) / get_index_cost(cursor, table_allopt) 
-        
+        index_cost = min(1, get_index_cost(cursor, table) / get_index_cost(cursor, table_allopt))
+            
     total_cost = alpha * query_cost + (1 - alpha) * index_cost
+
+    # print(total_cost)
 
     return total_cost
 
-def get_best_indexes(k, database, cursor, queries, num_queries):
-    num_indexes, indexes, _ = get_indexes(database)
+def get_best_indexes(k, database, cursor, queries, num_queries, table = None):
+    num_indexes, indexes, _ = get_indexes(database, table)
 
     index_costs = {}
 
@@ -61,7 +63,7 @@ def get_best_indexes(k, database, cursor, queries, num_queries):
 
     index_costs = [(k, v) for k, v in index_costs.items()]
     index_costs.sort(key=lambda x: x[1])
-    index_costs = [index_costs[i][0] for i in range(k)]
+    index_costs = [index_costs[i][0] for i in range(min(k, len(index_costs)))]
 
     return index_costs
 
@@ -82,18 +84,31 @@ if __name__ == "__main__":
 
     cursor = database.cursor()
 
-    table_noopt, table_allopt = get_table_index_info_extremes(database)
+    subset = None #["orders"]
+
+    table_noopt, table_allopt = get_table_index_info_extremes(database, subset=subset)
 
     sql_reader = open("queries/test_queries.sql")
     queries = sql_reader.read().split(";")
     sql_reader.close()
 
-    #indexes = ["index_lineitem_l_returnflag", "index_customer_c_nationkey", "index_lineitem_l_partkey", "index_lineitem_l_suppkey", "index_orders_o_orderstatus"]
-    #num_indexes = len(indexes)
-    num_queries = 10
+    test_query_13 = True
+    # 5 of 20 queries should be query 13
+    total_query_13 = 5
+    if test_query_13:
+        goal_query = queries.pop(13)
+
+        random.seed(5)
+
+        while len([query for query in queries if query == goal_query]) < 20:
+            queries[random.randint(0, len(queries) - 1)] = goal_query        
+
+    num_queries = 25
 
     num_greedy_indexes = 5
     greedy_indexes = get_best_indexes(num_greedy_indexes, database, cursor, queries, num_queries)
+
+    num_greedy_indexes = len(greedy_indexes)
 
     greedy_state = [1 for _ in range(len(greedy_indexes))]
 
@@ -101,11 +116,12 @@ if __name__ == "__main__":
 
     print(f"Table Greedy Opt:\n {table_greedy_opt}\n")
 
-    #determine actual num_indexes, indexes for each table
-    #TODO: change this so it runs the neural network on every table before a final pass on combined resulting config
+    # determine actual num_indexes, indexes for each table
 
     num_indexes = 10
-    indexes = get_best_indexes(num_indexes, database, cursor, queries, num_queries)
+    indexes = get_best_indexes(num_indexes, database, cursor, queries, num_queries, table=subset)
+
+    num_indexes = len(indexes)
 
     num_hidden = 3
     hidden_dim = 10
